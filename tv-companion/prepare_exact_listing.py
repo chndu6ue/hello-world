@@ -110,7 +110,11 @@ activation_method_replacement = '''    private void showAfterInstallDialog() {
     @Override
     protected void onResume'''
 
-text, count = activation_method_pattern.subn(activation_method_replacement, text, count=1)
+text, count = activation_method_pattern.subn(
+    lambda _match: activation_method_replacement,
+    text,
+    count=1,
+)
 if count != 1:
     raise RuntimeError(f"Expected to replace one activation guide method, replaced {count}")
 
