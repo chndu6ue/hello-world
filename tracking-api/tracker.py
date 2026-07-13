@@ -81,7 +81,6 @@ def sanitize_json(value: Any, depth: int = 0) -> Any:
 
 class TrackEventRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
-
     user_id: str = Field(min_length=1, max_length=160)
     action: str = Field(min_length=2, max_length=80)
     value: dict[str, Any] = Field(default_factory=dict)
@@ -103,7 +102,8 @@ class TrackEventRequest(BaseModel):
     @field_validator("action")
     @classmethod
     def normalize_action(cls, value: str) -> str:
-        action = ACTION_ALIASES.get(value.strip().lower(), value.strip().lower())
+        action = value.strip().lower()
+        action = ACTION_ALIASES.get(action, action)
         if action not in ALLOWED_ACTIONS:
             raise ValueError(f"Unsupported action: {action}")
         return action
@@ -178,7 +178,7 @@ def dashboard() -> FileResponse:
 @router.post("/events", response_model=TrackEventResponse)
 def record_event(payload: TrackEventRequest) -> TrackEventResponse:
     db = get_db()
-    now = firestore.Timestamp.now()
+    now = datetime.now(timezone.utc)
     user_ref = db.collection(USER_COLLECTION).document(user_document_id(payload.user_id))
     event_ref = user_ref.collection("events").document(payload.event_id)
     summary_ref = db.collection(META_COLLECTION).document(SUMMARY_DOCUMENT)
@@ -197,25 +197,24 @@ def record_event(payload: TrackEventRequest) -> TrackEventResponse:
         elapsed_ms: int | None = None
         if previous_at is not None:
             previous_dt = previous_at.to_datetime() if hasattr(previous_at, "to_datetime") else previous_at
-            elapsed_ms = max(0, int((now.to_datetime() - previous_dt).total_seconds() * 1000))
+            if previous_dt.tzinfo is None:
+                previous_dt = previous_dt.replace(tzinfo=timezone.utc)
+            elapsed_ms = max(0, int((now - previous_dt).total_seconds() * 1000))
 
         clean_value = sanitize_json(payload.value)
-        transaction.set(
-            event_ref,
-            {
-                "event_id": payload.event_id,
-                "user_id": payload.user_id,
-                "action": payload.action,
-                "value": clean_value,
-                "client_at": payload.client_at,
-                "server_at": now,
-                "elapsed_since_previous_ms": elapsed_ms,
-                "session_id": payload.session_id,
-                "installation_id": payload.installation_id,
-                "app_version": payload.app_version,
-                "language": payload.language,
-            },
-        )
+        transaction.set(event_ref, {
+            "event_id": payload.event_id,
+            "user_id": payload.user_id,
+            "action": payload.action,
+            "value": clean_value,
+            "client_at": payload.client_at,
+            "server_at": now,
+            "elapsed_since_previous_ms": elapsed_ms,
+            "session_id": payload.session_id,
+            "installation_id": payload.installation_id,
+            "app_version": payload.app_version,
+            "language": payload.language,
+        })
 
         user_update: dict[str, Any] = {
             "user_id": payload.user_id,
@@ -251,7 +250,6 @@ def record_event(payload: TrackEventRequest) -> TrackEventResponse:
             user_update["after_install_clicked_at"] = now
 
         transaction.set(user_ref, user_update, merge=True)
-
         summary_update: dict[str, Any] = {
             "total_events": firestore.Increment(1),
             "updated_at": now,
@@ -259,11 +257,11 @@ def record_event(payload: TrackEventRequest) -> TrackEventResponse:
         if not user_snapshot.exists:
             summary_update["total_users"] = firestore.Increment(1)
         transaction.set(summary_ref, summary_update, merge=True)
-        transaction.set(
-            action_ref,
-            {"action": payload.action, "count": firestore.Increment(1), "updated_at": now},
-            merge=True,
-        )
+        transaction.set(action_ref, {
+            "action": payload.action,
+            "count": firestore.Increment(1),
+            "updated_at": now,
+        }, merge=True)
         return False, elapsed_ms
 
     duplicate, elapsed_ms = persist(transaction)
@@ -306,8 +304,7 @@ def list_users(limit: int = Query(default=200, ge=1, le=1000)) -> dict[str, Any]
 
 @router.get("/users/{user_id}")
 def get_user(user_id: str, event_limit: int = Query(default=500, ge=1, le=2000)) -> dict[str, Any]:
-    decoded_user_id = user_id.strip()
-    user_ref = get_db().collection(USER_COLLECTION).document(user_document_id(decoded_user_id))
+    user_ref = get_db().collection(USER_COLLECTION).document(user_document_id(user_id.strip()))
     snapshot = user_ref.get()
     if not snapshot.exists:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
