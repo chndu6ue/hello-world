@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'tv-companion/**'
+      - 'tracking-api/**'
       - '.github/workflows/build-tv-companion.yml'
   workflow_dispatch:
 
@@ -50,6 +51,13 @@ jobs:
         working-directory: tv-companion
         run: python3 apply_visual_tutorial.py
 
+      - name: Apply tracking and inset fixes
+        working-directory: tv-companion
+        run: python3 apply_tracking.py
+
+      - name: Validate tracker API source
+        run: python3 -m py_compile tracking-api/main.py tracking-api/tracker.py
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -70,16 +78,16 @@ jobs:
         if: success()
         shell: bash
         run: |
-          rm -rf source-export nielsen-tv-assistant-source-v1.7.zip
+          rm -rf source-export nielsen-tv-assistant-tracking-source-v1.8.zip
           mkdir -p source-export
-          cp -a tv-companion source-export/
+          cp -a tv-companion tracking-api source-export/
           rm -rf \
             source-export/tv-companion/.gradle \
             source-export/tv-companion/.signing \
             source-export/tv-companion/build \
             source-export/tv-companion/app/build
           find source-export -name '*.log' -delete
-          (cd source-export && zip -qr ../nielsen-tv-assistant-source-v1.7.zip tv-companion)
+          (cd source-export && zip -qr ../nielsen-tv-assistant-tracking-source-v1.8.zip tv-companion tracking-api)
 
       - name: Upload build log
         if: always()
@@ -99,11 +107,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload source code
+      - name: Upload complete source
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: nielsen-tv-assistant-source-v1.7
-          path: nielsen-tv-assistant-source-v1.7.zip
+          name: nielsen-tv-assistant-tracking-source-v1.8
+          path: nielsen-tv-assistant-tracking-source-v1.8.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload standalone dashboard
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nielsen-tv-assistant-dashboard
+          path: tracking-api/dashboard.html
           if-no-files-found: error
           retention-days: 7
