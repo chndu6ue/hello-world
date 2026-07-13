@@ -1,9 +1,12 @@
 package com.nlsn.tvcompanion;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
@@ -19,12 +22,15 @@ import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
+import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -57,9 +63,17 @@ import java.util.regex.Pattern;
 public class LaunchActivity extends AppCompatActivity {
 
     private static final String TAG = "TV_INSTALL_ASSISTANT";
+    private static final String PREFS = "assistant_preferences";
+    private static final String PREF_LANGUAGE = "language";
     private static final int PERMISSION_REQUEST_CODE = 2001;
     private static final long DISCOVERY_WINDOW_MS = 9000L;
-    private static final String PLAY_SEARCH_QUERY = "confluencetv";
+    private static final long PREVIEW_FRAME_MS = 3200L;
+    private static final String TV_APP_PACKAGE = "com.nlsn.confluencetv";
+
+    private static final String[] LANGUAGE_CODES = {"en", "hi", "bn", "mr", "te", "ta"};
+    private static final String[] LANGUAGE_NAMES = {
+            "English", "हिन्दी", "বাংলা", "मराठी", "తెలుగు", "தமிழ்"
+    };
 
     private static final int COLOR_NAVY = Color.rgb(15, 42, 68);
     private static final int COLOR_BLUE = Color.rgb(32, 103, 227);
@@ -97,10 +111,41 @@ public class LaunchActivity extends AppCompatActivity {
     private Button installedButton;
     private RadioGroup deviceGroup;
 
+    private LinearLayout previewPanel;
+    private TextView previewStep;
+    private TextView previewVisual;
+    private TextView previewTitle;
+    private TextView previewBody;
+    private TextView previewDots;
+
     private volatile int scanGeneration = 0;
     private volatile boolean scanning = false;
     private String selectedDeviceKey;
     private boolean playStoreOpened = false;
+    private int previewFrame = 0;
+
+    private final Runnable previewRunnable = new Runnable() {
+        @Override
+        public void run() {
+            previewFrame = (previewFrame + 1) % 3;
+            showPreviewFrame(previewFrame, true);
+            mainHandler.postDelayed(this, PREVIEW_FRAME_MS);
+        }
+    };
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        SharedPreferences preferences =
+                newBase.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        String language = preferences.getString(PREF_LANGUAGE, "en");
+        Locale locale = Locale.forLanguageTag(language);
+        Locale.setDefault(locale);
+
+        Configuration configuration =
+                new Configuration(newBase.getResources().getConfiguration());
+        configuration.setLocale(locale);
+        super.attachBaseContext(newBase.createConfigurationContext(configuration));
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,22 +172,68 @@ public class LaunchActivity extends AppCompatActivity {
 
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(24), dp(30), dp(24), dp(28));
+        header.setPadding(dp(22), dp(24), dp(22), dp(24));
         header.setBackgroundColor(COLOR_NAVY);
 
-        TextView brand = text("NIELSEN STREAMING PANEL", 12, Color.rgb(183, 211, 255));
-        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        header.addView(brand);
+        LinearLayout brandRow = new LinearLayout(this);
+        brandRow.setOrientation(LinearLayout.HORIZONTAL);
+        brandRow.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView title = text("Install ConfluenceTV", 28, Color.WHITE);
+        TextView brand = text(getString(R.string.brand), 12, Color.rgb(183, 211, 255));
+        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        brandRow.addView(brand, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+
+        Spinner languageSpinner = new Spinner(this);
+        ArrayAdapter<String> languageAdapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_item,
+                LANGUAGE_NAMES);
+        languageAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        languageSpinner.setAdapter(languageAdapter);
+        languageSpinner.setContentDescription(getString(R.string.language));
+        languageSpinner.setBackground(rounded(Color.WHITE, 12, Color.WHITE));
+        languageSpinner.setPadding(dp(8), 0, dp(8), 0);
+        languageSpinner.setSelection(currentLanguageIndex(), false);
+        brandRow.addView(languageSpinner, new LinearLayout.LayoutParams(dp(116), dp(46)));
+        header.addView(brandRow);
+
+        final boolean[] languageReady = {false};
+        languageSpinner.post(() -> languageReady[0] = true);
+        languageSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(
+                    AdapterView<?> parent,
+                    View view,
+                    int position,
+                    long id) {
+                if (!languageReady[0]) {
+                    return;
+                }
+                String selectedCode = LANGUAGE_CODES[position];
+                String currentCode = getSharedPreferences(PREFS, MODE_PRIVATE)
+                        .getString(PREF_LANGUAGE, "en");
+                if (!selectedCode.equals(currentCode)) {
+                    getSharedPreferences(PREFS, MODE_PRIVATE)
+                            .edit()
+                            .putString(PREF_LANGUAGE, selectedCode)
+                            .apply();
+                    recreate();
+                }
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+                // No action.
+            }
+        });
+
+        TextView title = text(getString(R.string.title), 28, Color.WHITE);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setPadding(0, dp(8), 0, 0);
         header.addView(title);
 
-        TextView subtitle = text(
-                "Find your television, then continue in Google Play with the search already prepared.",
-                16,
-                Color.rgb(225, 234, 246));
+        TextView subtitle = text(getString(R.string.subtitle), 16, Color.rgb(225, 234, 246));
         subtitle.setLineSpacing(0, 1.15f);
         subtitle.setPadding(0, dp(10), 0, 0);
         header.addView(subtitle);
@@ -164,7 +255,7 @@ public class LaunchActivity extends AppCompatActivity {
         progress.setIndeterminate(true);
         statusCard.addView(progress, new LinearLayout.LayoutParams(dp(28), dp(28)));
 
-        statusText = text("Preparing TV discovery…", 15, COLOR_TEXT);
+        statusText = text(getString(R.string.status_preparing), 15, COLOR_TEXT);
         statusText.setPadding(dp(12), 0, 0, 0);
         statusText.setLineSpacing(0, 1.12f);
         statusCard.addView(statusText, new LinearLayout.LayoutParams(
@@ -181,11 +272,11 @@ public class LaunchActivity extends AppCompatActivity {
         LinearLayout sectionText = new LinearLayout(this);
         sectionText.setOrientation(LinearLayout.VERTICAL);
 
-        TextView chooseTitle = text("1. Choose your TV", 20, COLOR_TEXT);
+        TextView chooseTitle = text(getString(R.string.choose_tv_title), 20, COLOR_TEXT);
         chooseTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         sectionText.addView(chooseTitle);
 
-        TextView chooseSubtitle = text("Keep the phone and TV on the same Wi-Fi.", 14, COLOR_MUTED);
+        TextView chooseSubtitle = text(getString(R.string.choose_tv_subtitle), 14, COLOR_MUTED);
         chooseSubtitle.setPadding(0, dp(3), 0, 0);
         sectionText.addView(chooseSubtitle);
 
@@ -196,7 +287,7 @@ public class LaunchActivity extends AppCompatActivity {
 
         discoverButton = new Button(this);
         discoverButton.setAllCaps(false);
-        discoverButton.setText("Scan again");
+        discoverButton.setText(R.string.scan_again);
         discoverButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         discoverButton.setTextColor(COLOR_BLUE);
         discoverButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -217,45 +308,42 @@ public class LaunchActivity extends AppCompatActivity {
         deviceGroup = new RadioGroup(this);
         deviceGroup.setOrientation(RadioGroup.VERTICAL);
         deviceGroup.setPadding(0, dp(12), 0, 0);
-        deviceGroup.setOnCheckedChangeListener((group, checkedId) -> onDeviceSelected(group, checkedId));
+        deviceGroup.setOnCheckedChangeListener(
+                (group, checkedId) -> onDeviceSelected(group, checkedId));
         content.addView(deviceGroup, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT));
 
-        emptyStateText = text(
-                "No television selected yet. Discovery may take a few seconds.",
-                14,
-                COLOR_MUTED);
+        emptyStateText = text(getString(R.string.no_tv_selected), 14, COLOR_MUTED);
         emptyStateText.setGravity(Gravity.CENTER);
         emptyStateText.setPadding(dp(16), dp(18), dp(16), dp(18));
         emptyStateText.setBackground(rounded(Color.WHITE, 16, COLOR_BORDER));
         content.addView(emptyStateText, spacedParams(0, 12, 0, 22));
 
+        content.addView(createPreviewCard(), spacedParams(0, 0, 0, 18));
+
         LinearLayout guideCard = card(Color.WHITE, COLOR_BORDER);
         guideCard.setOrientation(LinearLayout.VERTICAL);
         guideCard.setPadding(dp(18), dp(18), dp(18), dp(18));
 
-        TextView installTitle = text("2. Install from Google Play", 20, COLOR_TEXT);
+        TextView installTitle = text(getString(R.string.install_title), 20, COLOR_TEXT);
         installTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         guideCard.addView(installTitle);
 
-        TextView installSubtitle = text(
-                "We will search for ConfluenceTV automatically. Google Play controls the final device selection.",
-                14,
-                COLOR_MUTED);
+        TextView installSubtitle = text(getString(R.string.install_subtitle), 14, COLOR_MUTED);
         installSubtitle.setLineSpacing(0, 1.12f);
         installSubtitle.setPadding(0, dp(6), 0, dp(14));
         guideCard.addView(installSubtitle);
 
-        guideCard.addView(step("1", "Tap the Android TV filter in Google Play."));
-        guideCard.addView(step("2", "Open ConfluenceTV by Nielsen Streaming Panel."));
-        guideCard.addView(step("3", "Tap Install, choose your TV, and confirm."));
+        guideCard.addView(step("1", getString(R.string.install_step_1)));
+        guideCard.addView(step("2", getString(R.string.install_step_2)));
+        guideCard.addView(step("3", getString(R.string.install_step_3)));
 
         content.addView(guideCard, spacedParams(0, 4, 0, 18));
 
         installButton = new Button(this);
         installButton.setAllCaps(false);
-        installButton.setText("Find ConfluenceTV in Google Play");
+        installButton.setText(R.string.open_play_store);
         installButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
         installButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         installButton.setTextColor(Color.WHITE);
@@ -269,7 +357,7 @@ public class LaunchActivity extends AppCompatActivity {
 
         installedButton = new Button(this);
         installedButton.setAllCaps(false);
-        installedButton.setText("I installed it — what next?");
+        installedButton.setText(R.string.activate_reward_button);
         installedButton.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
         installedButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         installedButton.setTextColor(COLOR_BLUE_DARK);
@@ -279,10 +367,7 @@ public class LaunchActivity extends AppCompatActivity {
         installedButton.setOnClickListener(v -> showAfterInstallDialog());
         content.addView(installedButton, spacedParams(0, 12, 0, 0));
 
-        TextView privacy = text(
-                "The assistant only uses local-network discovery to identify nearby TV devices. Installation is completed securely by Google Play.",
-                12,
-                COLOR_MUTED);
+        TextView privacy = text(getString(R.string.privacy_note), 12, COLOR_MUTED);
         privacy.setGravity(Gravity.CENTER);
         privacy.setLineSpacing(0, 1.12f);
         content.addView(privacy, spacedParams(12, 18, 12, 0));
@@ -293,6 +378,106 @@ public class LaunchActivity extends AppCompatActivity {
 
         scrollView.addView(root);
         setContentView(scrollView);
+        showPreviewFrame(0, false);
+    }
+
+    private LinearLayout createPreviewCard() {
+        LinearLayout previewCard = card(Color.WHITE, COLOR_BORDER);
+        previewCard.setOrientation(LinearLayout.VERTICAL);
+        previewCard.setPadding(dp(18), dp(16), dp(18), dp(16));
+
+        TextView heading = text(getString(R.string.preview_heading), 18, COLOR_TEXT);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        previewCard.addView(heading);
+
+        previewPanel = new LinearLayout(this);
+        previewPanel.setOrientation(LinearLayout.VERTICAL);
+        previewPanel.setPadding(dp(16), dp(14), dp(16), dp(14));
+        previewPanel.setBackground(rounded(COLOR_LIGHT_BLUE, 16, COLOR_LIGHT_BLUE));
+
+        previewStep = text("", 12, COLOR_BLUE_DARK);
+        previewStep.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        previewPanel.addView(previewStep);
+
+        previewVisual = text("", 16, Color.WHITE);
+        previewVisual.setGravity(Gravity.CENTER);
+        previewVisual.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
+        previewVisual.setMinHeight(dp(112));
+        previewVisual.setPadding(dp(12), dp(16), dp(12), dp(16));
+        previewVisual.setBackground(rounded(COLOR_NAVY, 16, COLOR_NAVY));
+        previewPanel.addView(previewVisual, spacedParams(0, 10, 0, 12));
+
+        previewTitle = text("", 17, COLOR_TEXT);
+        previewTitle.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        previewPanel.addView(previewTitle);
+
+        previewBody = text("", 14, COLOR_MUTED);
+        previewBody.setLineSpacing(0, 1.12f);
+        previewBody.setPadding(0, dp(5), 0, 0);
+        previewPanel.addView(previewBody);
+
+        previewDots = text("", 14, COLOR_BLUE);
+        previewDots.setGravity(Gravity.CENTER);
+        previewDots.setPadding(0, dp(10), 0, 0);
+        previewPanel.addView(previewDots);
+
+        previewCard.addView(previewPanel, spacedParams(0, 12, 0, 0));
+        return previewCard;
+    }
+
+    private void showPreviewFrame(int frame, boolean animate) {
+        if (previewPanel == null) {
+            return;
+        }
+
+        Runnable apply = () -> {
+            int[] titleIds = {
+                    R.string.preview_title_1,
+                    R.string.preview_title_2,
+                    R.string.preview_title_3
+            };
+            int[] bodyIds = {
+                    R.string.preview_body_1,
+                    R.string.preview_body_2,
+                    R.string.preview_body_3
+            };
+            int[] visualIds = {
+                    R.string.preview_visual_1,
+                    R.string.preview_visual_2,
+                    R.string.preview_visual_3
+            };
+            previewStep.setText(getString(R.string.preview_step, frame + 1, 3));
+            previewVisual.setText(visualIds[frame]);
+            previewTitle.setText(titleIds[frame]);
+            previewBody.setText(bodyIds[frame]);
+            previewDots.setText(frame == 0 ? "●  ○  ○" : frame == 1 ? "○  ●  ○" : "○  ○  ●");
+        };
+
+        if (!animate) {
+            apply.run();
+            return;
+        }
+
+        previewPanel.animate()
+                .alpha(0f)
+                .setDuration(160)
+                .withEndAction(() -> {
+                    apply.run();
+                    previewPanel.setAlpha(0f);
+                    previewPanel.animate().alpha(1f).setDuration(220).start();
+                })
+                .start();
+    }
+
+    private int currentLanguageIndex() {
+        String language = getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString(PREF_LANGUAGE, "en");
+        for (int i = 0; i < LANGUAGE_CODES.length; i++) {
+            if (LANGUAGE_CODES[i].equals(language)) {
+                return i;
+            }
+        }
+        return 0;
     }
 
     private LinearLayout step(String number, String copy) {
@@ -332,7 +517,7 @@ public class LaunchActivity extends AppCompatActivity {
         }
 
         if (!missing.isEmpty()) {
-            statusText.setText("Allow nearby-device access so the assistant can find your TV.");
+            statusText.setText(R.string.permission_needed);
             requestPermissions(missing.toArray(new String[0]), PERMISSION_REQUEST_CODE);
             return false;
         }
@@ -354,10 +539,7 @@ public class LaunchActivity extends AppCompatActivity {
             granted = granted && result == PackageManager.PERMISSION_GRANTED;
         }
         if (!granted) {
-            Toast.makeText(
-                    this,
-                    "Permission was denied. You can still continue to Google Play, but TV discovery may be incomplete.",
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.permission_denied, Toast.LENGTH_LONG).show();
         }
         discoverDevices();
     }
@@ -373,7 +555,7 @@ public class LaunchActivity extends AppCompatActivity {
         selectedDeviceKey = null;
         renderDeviceList();
 
-        statusText.setText("Looking for Android TVs and Google TV devices on your Wi-Fi…");
+        statusText.setText(R.string.status_searching);
         progress.setVisibility(View.VISIBLE);
         discoverButton.setEnabled(false);
         installButton.setEnabled(false);
@@ -386,7 +568,8 @@ public class LaunchActivity extends AppCompatActivity {
 
     private void acquireMulticastLock() {
         releaseMulticastLock();
-        WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        WifiManager wifi =
+                (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         if (wifi != null) {
             multicastLock = wifi.createMulticastLock("TV_INSTALL_DISCOVERY");
             multicastLock.setReferenceCounted(false);
@@ -414,7 +597,8 @@ public class LaunchActivity extends AppCompatActivity {
                             + "MX: 3\r\n"
                             + "ST: " + target + "\r\n\r\n";
                     byte[] data = query.getBytes(StandardCharsets.UTF_8);
-                    DatagramPacket packet = new DatagramPacket(data, data.length, group, 1900);
+                    DatagramPacket packet =
+                            new DatagramPacket(data, data.length, group, 1900);
                     socket.send(packet);
                     Thread.sleep(120);
                     socket.send(packet);
@@ -444,9 +628,14 @@ public class LaunchActivity extends AppCompatActivity {
                     }
 
                     String location = locationMatcher.group(1).trim();
-                    String uniqueness = packet.getAddress().getHostAddress() + "|" + location;
+                    String uniqueness =
+                            packet.getAddress().getHostAddress() + "|" + location;
                     if (processed.add(uniqueness)) {
-                        processSsdpResponse(generation, response, location, packet.getAddress());
+                        processSsdpResponse(
+                                generation,
+                                response,
+                                location,
+                                packet.getAddress());
                     }
                 }
             } catch (Exception e) {
@@ -492,8 +681,10 @@ public class LaunchActivity extends AppCompatActivity {
                 connection.setRequestProperty("Connection", "close");
                 int code = connection.getResponseCode();
                 if (code >= 200 && code < 400) {
-                    String headerApplicationUrl = connection.getHeaderField("Application-URL");
-                    if (headerApplicationUrl != null && !headerApplicationUrl.trim().isEmpty()) {
+                    String headerApplicationUrl =
+                            connection.getHeaderField("Application-URL");
+                    if (headerApplicationUrl != null
+                            && !headerApplicationUrl.trim().isEmpty()) {
                         applicationUrl = headerApplicationUrl.trim();
                     }
                     String xml = readLimited(connection.getInputStream(), 65536);
@@ -508,7 +699,7 @@ public class LaunchActivity extends AppCompatActivity {
                 name = model;
             }
             if (name == null || name.isEmpty()) {
-                name = server == null ? "Android TV device" : server;
+                name = server == null ? "Android TV" : server;
             }
 
             boolean dial = response.toLowerCase(Locale.US).contains("dial")
@@ -554,45 +745,58 @@ public class LaunchActivity extends AppCompatActivity {
             public void onServiceFound(NsdServiceInfo serviceInfo) {
                 if (generation != scanGeneration
                         || serviceInfo.getServiceType() == null
-                        || !serviceInfo.getServiceType().toLowerCase(Locale.US).contains("googlecast")) {
+                        || !serviceInfo.getServiceType()
+                        .toLowerCase(Locale.US)
+                        .contains("googlecast")) {
                     return;
                 }
 
                 try {
-                    nsdManager.resolveService(serviceInfo, new NsdManager.ResolveListener() {
-                        @Override
-                        public void onResolveFailed(NsdServiceInfo info, int errorCode) {
-                            Log.d(TAG, "Cast resolve failed: " + errorCode);
-                        }
+                    nsdManager.resolveService(
+                            serviceInfo,
+                            new NsdManager.ResolveListener() {
+                                @Override
+                                public void onResolveFailed(
+                                        NsdServiceInfo info,
+                                        int errorCode) {
+                                    Log.d(TAG, "Cast resolve failed: " + errorCode);
+                                }
 
-                        @Override
-                        public void onServiceResolved(NsdServiceInfo resolved) {
-                            if (generation != scanGeneration || resolved.getHost() == null) {
-                                return;
-                            }
+                                @Override
+                                public void onServiceResolved(
+                                        NsdServiceInfo resolved) {
+                                    if (generation != scanGeneration
+                                            || resolved.getHost() == null) {
+                                        return;
+                                    }
 
-                            String host = resolved.getHost().getHostAddress();
-                            String friendlyName = readTxtAttribute(resolved, "fn");
-                            String model = readTxtAttribute(resolved, "md");
-                            String name = firstNonBlank(
-                                    friendlyName,
-                                    resolved.getServiceName(),
-                                    model,
-                                    "Google Cast TV");
+                                    String host =
+                                            resolved.getHost().getHostAddress();
+                                    String friendlyName =
+                                            readTxtAttribute(resolved, "fn");
+                                    String model =
+                                            readTxtAttribute(resolved, "md");
+                                    String name = firstNonBlank(
+                                            friendlyName,
+                                            resolved.getServiceName(),
+                                            model,
+                                            "Google Cast TV");
 
-                            if (!isLikelyTv(name, model, false, true)) {
-                                return;
-                            }
+                                    if (!isLikelyTv(name, model, false, true)) {
+                                        return;
+                                    }
 
-                            addOrUpdateDevice(new Device(
-                                    host,
-                                    cleanDeviceName(name, model),
-                                    host,
-                                    resolved.getPort() > 0 ? resolved.getPort() : 8008,
-                                    "Google Cast TV",
-                                    "http://" + host + ":8008/apps/"));
-                        }
-                    });
+                                    addOrUpdateDevice(new Device(
+                                            host,
+                                            cleanDeviceName(name, model),
+                                            host,
+                                            resolved.getPort() > 0
+                                                    ? resolved.getPort()
+                                                    : 8008,
+                                            "Google Cast TV",
+                                            "http://" + host + ":8008/apps/"));
+                                }
+                            });
                 } catch (Exception e) {
                     Log.d(TAG, "Could not resolve Cast service", e);
                 }
@@ -609,14 +813,18 @@ public class LaunchActivity extends AppCompatActivity {
             }
 
             @Override
-            public void onStartDiscoveryFailed(String serviceType, int errorCode) {
+            public void onStartDiscoveryFailed(
+                    String serviceType,
+                    int errorCode) {
                 Log.w(TAG, "Cast discovery start failed: " + errorCode);
                 stopCastDiscoveryQuietly();
                 finishCastTaskOnce(generation, pending, completed);
             }
 
             @Override
-            public void onStopDiscoveryFailed(String serviceType, int errorCode) {
+            public void onStopDiscoveryFailed(
+                    String serviceType,
+                    int errorCode) {
                 Log.w(TAG, "Cast discovery stop failed: " + errorCode);
                 finishCastTaskOnce(generation, pending, completed);
             }
@@ -624,9 +832,13 @@ public class LaunchActivity extends AppCompatActivity {
 
         castDiscoveryListener = listener;
         try {
-            nsdManager.discoverServices("_googlecast._tcp.", NsdManager.PROTOCOL_DNS_SD, listener);
+            nsdManager.discoverServices(
+                    "_googlecast._tcp.",
+                    NsdManager.PROTOCOL_DNS_SD,
+                    listener);
             mainHandler.postDelayed(() -> {
-                if (generation == scanGeneration && castDiscoveryListener == listener) {
+                if (generation == scanGeneration
+                        && castDiscoveryListener == listener) {
                     stopCastDiscoveryQuietly();
                 }
                 finishCastTaskOnce(generation, pending, completed);
@@ -650,16 +862,23 @@ public class LaunchActivity extends AppCompatActivity {
         }
     }
 
-    private boolean isLikelyTv(String name, String model, boolean dial, boolean cast) {
+    private boolean isLikelyTv(
+            String name,
+            String model,
+            boolean dial,
+            boolean cast) {
         if (dial) {
             return true;
         }
 
-        String haystack = ((name == null ? "" : name) + " "
-                + (model == null ? "" : model)).toLowerCase(Locale.US);
+        String haystack = ((name == null ? "" : name)
+                + " "
+                + (model == null ? "" : model))
+                .toLowerCase(Locale.US);
 
         String[] audioOnly = {
-                "home mini", "nest mini", "nest audio", "speaker", "soundbar", "audio"
+                "home mini", "nest mini", "nest audio",
+                "speaker", "soundbar", "audio"
         };
         for (String token : audioOnly) {
             if (haystack.contains(token)) {
@@ -668,8 +887,9 @@ public class LaunchActivity extends AppCompatActivity {
         }
 
         String[] tvSignals = {
-                "tv", "bravia", "mitv", "mi box", "android", "google tv",
-                "chromecast", "shield", "binge", "tata sky", "fire"
+                "tv", "bravia", "mitv", "mi box", "android",
+                "google tv", "chromecast", "shield",
+                "binge", "tata sky", "fire"
         };
         for (String token : tvSignals) {
             if (haystack.contains(token)) {
@@ -691,7 +911,8 @@ public class LaunchActivity extends AppCompatActivity {
 
         if (model != null
                 && !model.trim().isEmpty()
-                && !value.toLowerCase(Locale.US).contains(model.toLowerCase(Locale.US))) {
+                && !value.toLowerCase(Locale.US)
+                .contains(model.toLowerCase(Locale.US))) {
             value = value + " — " + model.trim();
         }
 
@@ -719,8 +940,11 @@ public class LaunchActivity extends AppCompatActivity {
         }
     }
 
-    private void completeDiscoveryTask(int generation, AtomicInteger pending) {
-        if (generation != scanGeneration || pending.decrementAndGet() != 0) {
+    private void completeDiscoveryTask(
+            int generation,
+            AtomicInteger pending) {
+        if (generation != scanGeneration
+                || pending.decrementAndGet() != 0) {
             return;
         }
 
@@ -741,12 +965,11 @@ public class LaunchActivity extends AppCompatActivity {
             }
 
             if (count == 0) {
-                statusText.setText("No TV responded. You can rescan or continue to Google Play manually.");
+                statusText.setText(R.string.status_none);
+            } else if (count == 1) {
+                statusText.setText(R.string.status_found_one);
             } else {
-                statusText.setText(
-                        "Found " + count + " television"
-                                + (count == 1 ? "" : "s")
-                                + ". Select the one you want to install on.");
+                statusText.setText(getString(R.string.status_found_many, count));
             }
             installButton.setEnabled(true);
         });
@@ -787,7 +1010,9 @@ public class LaunchActivity extends AppCompatActivity {
                             new int[]{}
                     },
                     new int[]{COLOR_BLUE, COLOR_MUTED}));
-            radio.setText(device.displayText());
+            radio.setText(device.shortName()
+                    + "\n"
+                    + getString(R.string.device_detected));
             radio.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
             radio.setTextColor(COLOR_TEXT);
             radio.setGravity(Gravity.CENTER_VERTICAL);
@@ -806,17 +1031,21 @@ public class LaunchActivity extends AppCompatActivity {
             deviceGroup.addView(radio, params);
         }
 
-        emptyStateText.setVisibility(snapshot.isEmpty() ? View.VISIBLE : View.GONE);
-        deviceGroup.setVisibility(snapshot.isEmpty() ? View.GONE : View.VISIBLE);
+        emptyStateText.setVisibility(
+                snapshot.isEmpty() ? View.VISIBLE : View.GONE);
+        deviceGroup.setVisibility(
+                snapshot.isEmpty() ? View.GONE : View.VISIBLE);
 
-        deviceGroup.setOnCheckedChangeListener((group, checkedId) ->
-                onDeviceSelected(group, checkedId));
+        deviceGroup.setOnCheckedChangeListener(
+                (group, checkedId) -> onDeviceSelected(group, checkedId));
 
         refreshDeviceStyles();
         updateInstallButtonLabel();
     }
 
-    private void onDeviceSelected(RadioGroup group, int checkedId) {
+    private void onDeviceSelected(
+            RadioGroup group,
+            int checkedId) {
         View checked = group.findViewById(checkedId);
         if (checked != null && checked.getTag() instanceof String) {
             selectedDeviceKey = (String) checked.getTag();
@@ -841,59 +1070,61 @@ public class LaunchActivity extends AppCompatActivity {
     private void updateInstallButtonLabel() {
         Device selected = getSelectedDevice();
         if (selected == null) {
-            installButton.setText("Find ConfluenceTV in Google Play");
+            installButton.setText(R.string.open_play_store);
         } else {
-            installButton.setText("Install on " + selected.shortName());
+            installButton.setText(
+                    getString(R.string.install_on_device, selected.shortName()));
         }
         installButton.setEnabled(!scanning);
     }
 
     private Device getSelectedDevice() {
         synchronized (deviceLock) {
-            return selectedDeviceKey == null ? null : devices.get(selectedDeviceKey);
+            return selectedDeviceKey == null
+                    ? null
+                    : devices.get(selectedDeviceKey);
         }
     }
 
     private void confirmAndOpenPlayStore() {
         Device selected = getSelectedDevice();
-        String destination = selected == null ? "your Android TV" : selected.shortName();
-
-        String message = "Google Play will open with “ConfluenceTV” already searched.\n\n"
-                + "1. Tap the Android TV filter.\n"
-                + "2. Open ConfluenceTV by Nielsen Streaming Panel.\n"
-                + "3. Tap Install and select " + destination + ".\n\n"
-                + "Your TV must use the same Google account and be compatible with the app.";
+        String destination = selected == null
+                ? getString(R.string.default_tv)
+                : selected.shortName();
 
         new AlertDialog.Builder(this)
-                .setTitle("Ready to install")
-                .setMessage(message)
-                .setNegativeButton("Not now", null)
-                .setPositiveButton("Open Google Play", (dialog, which) -> openPlayStoreSearch())
+                .setTitle(R.string.ready_title)
+                .setMessage(getString(R.string.ready_message, destination))
+                .setNegativeButton(R.string.not_now, null)
+                .setPositiveButton(
+                        R.string.open_google_play,
+                        (dialog, which) -> openPlayStoreListing())
                 .show();
     }
 
-    private void openPlayStoreSearch() {
-        Uri marketUri = Uri.parse(
-                "market://search?q=" + Uri.encode(PLAY_SEARCH_QUERY) + "&c=apps");
+    private void openPlayStoreListing() {
+        Uri marketUri =
+                Uri.parse("market://details?id=" + TV_APP_PACKAGE);
         Intent playIntent = new Intent(Intent.ACTION_VIEW, marketUri);
         playIntent.setPackage("com.android.vending");
-        playIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        playIntent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
         try {
             startActivity(playIntent);
             playStoreOpened = true;
         } catch (Exception playStoreError) {
             Uri webUri = Uri.parse(
-                    "https://play.google.com/store/search?q="
-                            + Uri.encode(PLAY_SEARCH_QUERY)
-                            + "&c=apps");
+                    "https://play.google.com/store/apps/details?id="
+                            + TV_APP_PACKAGE);
             try {
                 startActivity(new Intent(Intent.ACTION_VIEW, webUri));
                 playStoreOpened = true;
             } catch (Exception browserError) {
                 Toast.makeText(
                         this,
-                        "Google Play or a web browser could not be opened.",
+                        R.string.play_open_failed,
                         Toast.LENGTH_LONG).show();
             }
         }
@@ -901,34 +1132,45 @@ public class LaunchActivity extends AppCompatActivity {
 
     private void showAfterInstallDialog() {
         Device selected = getSelectedDevice();
-        String destination = selected == null ? "the TV" : selected.shortName();
+        String destination = selected == null
+                ? getString(R.string.default_tv)
+                : selected.shortName();
 
         new AlertDialog.Builder(this)
-                .setTitle("Finish on your TV")
-                .setMessage(
-                        "Open ConfluenceTV from the Apps screen on " + destination + ".\n\n"
-                                + "Complete any sign-in or pairing shown by the TV app. "
-                                + "Use the TV app’s first launch—not network discovery alone—as the installation confirmation.")
-                .setPositiveButton("Got it", null)
+                .setTitle(R.string.after_install_title)
+                .setMessage(getString(R.string.after_install_message, destination))
+                .setPositiveButton(R.string.got_it, null)
                 .show();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        mainHandler.removeCallbacks(previewRunnable);
+        mainHandler.postDelayed(previewRunnable, PREVIEW_FRAME_MS);
+
         if (playStoreOpened && installedButton != null) {
             installedButton.setVisibility(View.VISIBLE);
-            statusText.setText(
-                    "Google Play was opened. After installation, return here for the final TV steps.");
+            statusText.setText(R.string.status_returned);
         }
     }
 
-    private static String extractHeader(Pattern pattern, String text) {
+    @Override
+    protected void onPause() {
+        mainHandler.removeCallbacks(previewRunnable);
+        super.onPause();
+    }
+
+    private static String extractHeader(
+            Pattern pattern,
+            String text) {
         Matcher matcher = pattern.matcher(text);
         return matcher.find() ? matcher.group(1).trim() : null;
     }
 
-    private static String extractXmlValue(Pattern pattern, String xml) {
+    private static String extractXmlValue(
+            Pattern pattern,
+            String xml) {
         Matcher matcher = pattern.matcher(xml);
         if (!matcher.find()) {
             return null;
@@ -940,14 +1182,19 @@ public class LaunchActivity extends AppCompatActivity {
                 .trim();
     }
 
-    private static String readLimited(InputStream input, int maxCharacters) throws Exception {
+    private static String readLimited(
+            InputStream input,
+            int maxCharacters) throws Exception {
         StringBuilder value = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(input, StandardCharsets.UTF_8))) {
             char[] buffer = new char[2048];
             int read;
-            while ((read = reader.read(buffer)) != -1 && value.length() < maxCharacters) {
-                int accepted = Math.min(read, maxCharacters - value.length());
+            while ((read = reader.read(buffer)) != -1
+                    && value.length() < maxCharacters) {
+                int accepted = Math.min(
+                        read,
+                        maxCharacters - value.length());
                 value.append(buffer, 0, accepted);
             }
         }
@@ -976,12 +1223,16 @@ public class LaunchActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         ++scanGeneration;
+        mainHandler.removeCallbacks(previewRunnable);
         stopCastDiscoveryQuietly();
         releaseMulticastLock();
         super.onDestroy();
     }
 
-    private TextView text(String value, int sizeSp, int color) {
+    private TextView text(
+            String value,
+            int sizeSp,
+            int color) {
         TextView textView = new TextView(this);
         textView.setText(value);
         textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp);
@@ -989,13 +1240,18 @@ public class LaunchActivity extends AppCompatActivity {
         return textView;
     }
 
-    private LinearLayout card(int fillColor, int strokeColor) {
+    private LinearLayout card(
+            int fillColor,
+            int strokeColor) {
         LinearLayout layout = new LinearLayout(this);
         layout.setBackground(rounded(fillColor, 18, strokeColor));
         return layout;
     }
 
-    private GradientDrawable rounded(int fillColor, int radiusDp, int strokeColor) {
+    private GradientDrawable rounded(
+            int fillColor,
+            int radiusDp,
+            int strokeColor) {
         GradientDrawable drawable = new GradientDrawable();
         drawable.setColor(fillColor);
         drawable.setCornerRadius(dp(radiusDp));
@@ -1008,15 +1264,21 @@ public class LaunchActivity extends AppCompatActivity {
             int top,
             int right,
             int bottom) {
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.setMargins(dp(left), dp(top), dp(right), dp(bottom));
+        LinearLayout.LayoutParams params =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.setMargins(
+                dp(left),
+                dp(top),
+                dp(right),
+                dp(bottom));
         return params;
     }
 
     private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
+        return Math.round(
+                value * getResources().getDisplayMetrics().density);
     }
 
     private static final class Device {
@@ -1057,20 +1319,20 @@ public class LaunchActivity extends AppCompatActivity {
             }
             if (source == null) {
                 source = other.source;
-            } else if (other.source != null && !source.contains(other.source)) {
+            } else if (other.source != null
+                    && !source.contains(other.source)) {
                 source = source + " + " + other.source;
             }
-            if (dialAppsBaseUrl == null && other.dialAppsBaseUrl != null) {
+            if (dialAppsBaseUrl == null
+                    && other.dialAppsBaseUrl != null) {
                 dialAppsBaseUrl = other.dialAppsBaseUrl;
             }
         }
 
-        private String displayText() {
-            return shortName() + "\nTV detected on this Wi-Fi";
-        }
-
         private String shortName() {
-            String value = name == null || name.trim().isEmpty() ? "Android TV" : name.trim();
+            String value = name == null || name.trim().isEmpty()
+                    ? "Android TV"
+                    : name.trim();
             if (value.length() > 34) {
                 return value.substring(0, 31).trim() + "…";
             }
