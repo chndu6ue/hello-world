@@ -23,11 +23,28 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Restore stable debug signing key
+      - name: Restore test signing key
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: tv-companion-debug-keystore-v1
+          path: tv-companion/.signing/debug.keystore
+          key: tv-companion-test-signing-v1
+
+      - name: Prepare test signing key
+        shell: bash
+        run: |
+          mkdir -p tv-companion/.signing
+          if [ ! -f tv-companion/.signing/debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore tv-companion/.signing/debug.keystore \
+              -storetype JKS \
+              -storepass android \
+              -keypass android \
+              -alias tvcompanion \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=TV Companion Test, O=Nielsen Test, C=IN"
+          fi
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
