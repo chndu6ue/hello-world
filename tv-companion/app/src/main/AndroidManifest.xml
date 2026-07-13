@@ -11,7 +11,10 @@
 
     <application
         android:allowBackup="true"
-        android:label="ConfluenceTV Install Assistant"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.TVCompanion"
         android:usesCleartextTraffic="true"
