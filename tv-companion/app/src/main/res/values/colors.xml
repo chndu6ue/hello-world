@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+    <color name="assistant_icon_background">#0F2A44</color>
+    <color name="assistant_icon_blue">#2067E3</color>
+    <color name="assistant_icon_green">#19A974</color>
+</resources>

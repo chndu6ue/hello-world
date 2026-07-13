@@ -1,0 +1,126 @@
+name: Build TV Companion APK
+
+on:
+  pull_request:
+    paths:
+      - 'tv-companion/**'
+      - 'tracking-api/**'
+      - '.github/workflows/build-tv-companion.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Restore test signing key
+        uses: actions/cache@v4
+        with:
+          path: tv-companion/.signing/debug.keystore
+          key: tv-companion-test-signing-v1
+
+      - name: Prepare test signing key
+        shell: bash
+        run: |
+          mkdir -p tv-companion/.signing
+          if [ ! -f tv-companion/.signing/debug.keystore ]; then
+            keytool -genkeypair \
+              -keystore tv-companion/.signing/debug.keystore \
+              -storetype JKS \
+              -storepass android \
+              -keypass android \
+              -alias tvcompanion \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=TV Companion Test, O=Nielsen Test, C=IN"
+          fi
+
+      - name: Apply visual install guide
+        working-directory: tv-companion
+        run: python3 apply_visual_tutorial.py
+
+      - name: Apply tracking and inset fixes
+        working-directory: tv-companion
+        run: python3 apply_tracking.py
+
+      - name: Validate tracker API source
+        run: python3 -m py_compile tracking-api/main.py tracking-api/tracker.py
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Build debug APK
+        id: build
+        working-directory: tv-companion
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon clean assembleDebug 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Package final source code
+        if: success()
+        shell: bash
+        run: |
+          rm -rf source-export nielsen-tv-assistant-tracking-source-v1.8.zip
+          mkdir -p source-export
+          cp -a tv-companion tracking-api source-export/
+          rm -rf \
+            source-export/tv-companion/.gradle \
+            source-export/tv-companion/.signing \
+            source-export/tv-companion/build \
+            source-export/tv-companion/app/build
+          find source-export -name '*.log' -delete
+          (cd source-export && zip -qr ../nielsen-tv-assistant-tracking-source-v1.8.zip tv-companion tracking-api)
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-companion-build-log
+          path: tv-companion/build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload debug APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-companion-debug-apk
+          path: tv-companion/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload complete source
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nielsen-tv-assistant-tracking-source-v1.8
+          path: nielsen-tv-assistant-tracking-source-v1.8.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload standalone dashboard
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nielsen-tv-assistant-dashboard
+          path: tracking-api/dashboard.html
+          if-no-files-found: error
+          retention-days: 7

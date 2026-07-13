@@ -1,0 +1,51 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.nlsn.tvcompanion'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.nlsn.tvcompanion'
+        minSdk 23
+        targetSdk 35
+        versionCode 10
+        versionName '1.6-multilingual-preview'
+    }
+
+    signingConfigs {
+        testDebug {
+            storeFile file('../.signing/debug.keystore')
+            storePassword 'android'
+            keyAlias 'tvcompanion'
+            keyPassword 'android'
+        }
+    }
+
+    buildTypes {
+        debug {
+            debuggable true
+            signingConfig signingConfigs.testDebug
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+configurations.configureEach {
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
+    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.15.0'
+}

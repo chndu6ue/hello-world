@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">निल्सन टीवी सहायक</string>
+    <string name="brand">निल्सन स्ट्रीमिंग पैनल</string>
+    <string name="language">भाषा</string>
+    <string name="title">ConfluenceTV इंस्टॉल करें</string>
+    <string name="subtitle">अपना टीवी खोजें, ConfluenceTV इंस्टॉल करें, फिर मोबाइल नंबर और OTP से इसे सक्रिय करें।</string>
+
+    <string name="status_preparing">टीवी खोज की तैयारी हो रही है…</string>
+    <string name="permission_needed">टीवी खोजने के लिए आस-पास के डिवाइस की अनुमति दें।</string>
+    <string name="permission_denied">अनुमति नहीं मिली। आप Google Play पर जा सकते हैं, लेकिन टीवी खोज अधूरी हो सकती है।</string>
+    <string name="status_searching">आपके Wi-Fi पर Android TV और Google TV डिवाइस खोजे जा रहे हैं…</string>
+    <string name="status_none">कोई टीवी नहीं मिला। फिर से स्कैन करें या Google Play पर जाएँ।</string>
+    <string name="status_found_one">1 टीवी मिला। आगे बढ़ने के लिए उसे चुनें।</string>
+    <string name="status_found_many">%1$d टीवी मिले। जिस टीवी पर इंस्टॉल करना है उसे चुनें।</string>
+    <string name="status_returned">टीवी पर इंस्टॉल हो गया? ConfluenceTV खोलें, मोबाइल नंबर से साइन इन करें और ₹170 पाने के लिए OTP पूरा करें।</string>
+
+    <string name="choose_tv_title">1. अपना टीवी चुनें</string>
+    <string name="choose_tv_subtitle">फोन और टीवी को एक ही Wi-Fi पर रखें।</string>
+    <string name="scan_again">फिर से स्कैन करें</string>
+    <string name="no_tv_selected">अभी कोई टीवी नहीं चुना गया है। खोज में कुछ सेकंड लग सकते हैं।</string>
+    <string name="device_detected">इस Wi-Fi पर टीवी मिला</string>
+
+    <string name="preview_heading">त्वरित पूर्वावलोकन</string>
+    <string name="preview_step">चरण %1$d / %2$d</string>
+    <string name="preview_title_1">सही Play Store पेज खोलें</string>
+    <string name="preview_body_1">सहायक ConfluenceTV को सीधे खोलता है, इसलिए उपयोगकर्ता को खोजने की जरूरत नहीं है।</string>
+    <string name="preview_visual_1">GOOGLE PLAY\nConfluenceTV\n[ इंस्टॉल ▼ ]</string>
+    <string name="preview_title_2">टेलीविजन चुनें</string>
+    <string name="preview_body_2">डिवाइस तीर या इंस्टॉल बटन पर टैप करें, टीवी चुनें और पुष्टि करें।</string>
+    <string name="preview_visual_2">डिवाइस चुनें\n● लिविंग रूम टीवी\n○ यह फोन</string>
+    <string name="preview_title_3">टीवी पर खोलें और सक्रिय करें</string>
+    <string name="preview_body_3">टीवी पर Apps खोलें, ConfluenceTV शुरू करें, पंजीकृत मोबाइल नंबर से साइन इन करें और OTP दर्ज करें।</string>
+    <string name="preview_visual_3">TV होम → APPS\nConfluenceTV\nमोबाइल → OTP → ₹170</string>
+
+    <string name="install_title">2. Google Play से इंस्टॉल करें</string>
+    <string name="install_subtitle">हम ConfluenceTV का सही पेज खोलेंगे। अंतिम डिवाइस चयन Google Play नियंत्रित करता है।</string>
+    <string name="install_step_1">Nielsen Streaming Panel का ConfluenceTV जाँचें।</string>
+    <string name="install_step_2">इंस्टॉल या डिवाइस चयन तीर पर टैप करें।</string>
+    <string name="install_step_3">अपना टीवी चुनें और इंस्टॉलेशन की पुष्टि करें।</string>
+    <string name="open_play_store">Google Play में ConfluenceTV खोलें</string>
+    <string name="install_on_device">%1$s पर इंस्टॉल करें</string>
+
+    <string name="activate_reward_button">टीवी पर खोलें और सक्रिय करें — ₹170 पाएँ</string>
+    <string name="privacy_note">सहायक केवल पास के टीवी डिवाइस पहचानने के लिए स्थानीय नेटवर्क खोज का उपयोग करता है। इंस्टॉलेशन Google Play द्वारा सुरक्षित रूप से पूरा किया जाता है।</string>
+
+    <string name="default_tv">आपका Android TV</string>
+    <string name="ready_title">इंस्टॉल करने के लिए तैयार</string>
+    <string name="ready_message">Google Play में ConfluenceTV का सही पेज खुलेगा।\n\n1. Nielsen Streaming Panel का ConfluenceTV जाँचें।\n2. इंस्टॉल या डिवाइस चयन तीर पर टैप करें।\n3. %1$s चुनें और पुष्टि करें।\n\nटीवी उसी Google खाते से जुड़ा होना चाहिए और ऐप के अनुकूल होना चाहिए।</string>
+    <string name="not_now">अभी नहीं</string>
+    <string name="open_google_play">Google Play खोलें</string>
+    <string name="play_open_failed">Google Play या वेब ब्राउज़र नहीं खुल सका।</string>
+
+    <string name="after_install_title">ConfluenceTV खोलें और सक्रिय करें</string>
+    <string name="after_install_message">%1$s पर:\n\n1. टीवी रिमोट पर Home दबाएँ।\n2. Apps या Your apps खोलें।\n3. ConfluenceTV चुनें।\n4. पंजीकरण में इस्तेमाल किए गए उसी मोबाइल नंबर से साइन इन करें।\n5. मोबाइल पर मिला OTP दर्ज करें।\n6. सक्रियण की पुष्टि होने तक टीवी ऐप खुला रखें।\n\nसफल टीवी सक्रियण और OTP सत्यापन के बाद ₹170 इंस्टॉलेशन रिवॉर्ड क्रेडिट किया जा सकता है। दैनिक रिवॉर्ड पाने के लिए ConfluenceTV का उपयोग जारी रखें।\n\nरिवॉर्ड सफल सत्यापन और अभियान पात्रता के अधीन हैं।</string>
+    <string name="got_it">समझ गया</string>
+</resources>

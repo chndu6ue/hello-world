@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Nielsen TV Assistant</string>
+    <string name="brand">NIELSEN STREAMING PANEL</string>
+    <string name="language">Language</string>
+    <string name="title">Install ConfluenceTV</string>
+    <string name="subtitle">Find your television, install ConfluenceTV, then activate it with your mobile number and OTP.</string>
+
+    <string name="status_preparing">Preparing TV discovery…</string>
+    <string name="permission_needed">Allow nearby-device access so the assistant can find your TV.</string>
+    <string name="permission_denied">Permission was denied. You can still continue to Google Play, but TV discovery may be incomplete.</string>
+    <string name="status_searching">Looking for Android TVs and Google TV devices on your Wi-Fi…</string>
+    <string name="status_none">No TV responded. You can scan again or continue to Google Play.</string>
+    <string name="status_found_one">Found 1 television. Select it to continue.</string>
+    <string name="status_found_many">Found %1$d televisions. Select the one you want to install on.</string>
+    <string name="status_returned">Installed on TV? Open ConfluenceTV, sign in with your mobile number, and complete OTP to claim ₹170.</string>
+
+    <string name="choose_tv_title">1. Choose your TV</string>
+    <string name="choose_tv_subtitle">Keep the phone and TV on the same Wi-Fi.</string>
+    <string name="scan_again">Scan again</string>
+    <string name="no_tv_selected">No television selected yet. Discovery may take a few seconds.</string>
+    <string name="device_detected">TV detected on this Wi-Fi</string>
+
+    <string name="preview_heading">Quick preview</string>
+    <string name="preview_step">Step %1$d of %2$d</string>
+    <string name="preview_title_1">Open the exact Play Store listing</string>
+    <string name="preview_body_1">The assistant opens ConfluenceTV directly, so the user does not need to search.</string>
+    <string name="preview_visual_1">GOOGLE PLAY\nConfluenceTV\n[ Install ▼ ]</string>
+    <string name="preview_title_2">Choose the television</string>
+    <string name="preview_body_2">Tap the device arrow or Install button, select the TV, and confirm.</string>
+    <string name="preview_visual_2">CHOOSE A DEVICE\n● Living Room TV\n○ This phone</string>
+    <string name="preview_title_3">Open and activate on TV</string>
+    <string name="preview_body_3">Open Apps on the TV, launch ConfluenceTV, sign in with the registered mobile number, and enter OTP.</string>
+    <string name="preview_visual_3">TV HOME → APPS\nConfluenceTV\nMobile → OTP → ₹170</string>
+
+    <string name="install_title">2. Install from Google Play</string>
+    <string name="install_subtitle">We will open the exact ConfluenceTV listing. Google Play controls the final device selection.</string>
+    <string name="install_step_1">Review ConfluenceTV by Nielsen Streaming Panel.</string>
+    <string name="install_step_2">Tap Install or the device-selection arrow.</string>
+    <string name="install_step_3">Choose your TV and confirm installation.</string>
+    <string name="open_play_store">Open ConfluenceTV in Google Play</string>
+    <string name="install_on_device">Install on %1$s</string>
+
+    <string name="activate_reward_button">Open &amp; activate on TV — claim ₹170</string>
+    <string name="privacy_note">The assistant only uses local-network discovery to identify nearby TV devices. Installation is completed securely by Google Play.</string>
+
+    <string name="default_tv">your Android TV</string>
+    <string name="ready_title">Ready to install</string>
+    <string name="ready_message">Google Play will open the exact ConfluenceTV listing.\n\n1. Review ConfluenceTV by Nielsen Streaming Panel.\n2. Tap Install or the device-selection arrow.\n3. Select %1$s and confirm.\n\nYour TV must use the same Google account and be compatible with the app.</string>
+    <string name="not_now">Not now</string>
+    <string name="open_google_play">Open Google Play</string>
+    <string name="play_open_failed">Google Play or a web browser could not be opened.</string>
+
+    <string name="after_install_title">Open and activate ConfluenceTV</string>
+    <string name="after_install_message">On %1$s:\n\n1. Press Home on the TV remote.\n2. Open Apps or Your apps.\n3. Select ConfluenceTV.\n4. Sign in with the same mobile number used during registration.\n5. Enter the OTP received on your mobile.\n6. Keep the TV app open until activation is confirmed.\n\nAfter successful TV activation and OTP verification, your ₹170 installation reward can be credited. Continue using ConfluenceTV to earn daily rewards.\n\nRewards are subject to successful verification and campaign eligibility.</string>
+    <string name="got_it">Got it</string>
+</resources>
