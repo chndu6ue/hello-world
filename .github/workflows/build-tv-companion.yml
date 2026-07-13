@@ -46,6 +46,10 @@ jobs:
               -dname "CN=TV Companion Test, O=Nielsen Test, C=IN"
           fi
 
+      - name: Apply visual install guide
+        working-directory: tv-companion
+        run: python3 apply_visual_tutorial.py
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -62,6 +66,21 @@ jobs:
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
           exit $code
 
+      - name: Package final source code
+        if: success()
+        shell: bash
+        run: |
+          rm -rf source-export nielsen-tv-assistant-source-v1.7.zip
+          mkdir -p source-export
+          cp -a tv-companion source-export/
+          rm -rf \
+            source-export/tv-companion/.gradle \
+            source-export/tv-companion/.signing \
+            source-export/tv-companion/build \
+            source-export/tv-companion/app/build
+          find source-export -name '*.log' -delete
+          (cd source-export && zip -qr ../nielsen-tv-assistant-source-v1.7.zip tv-companion)
+
       - name: Upload build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -77,5 +96,14 @@ jobs:
         with:
           name: tv-companion-debug-apk
           path: tv-companion/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload source code
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nielsen-tv-assistant-source-v1.7
+          path: nielsen-tv-assistant-source-v1.7.zip
           if-no-files-found: error
           retention-days: 7
