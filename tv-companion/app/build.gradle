@@ -10,8 +10,8 @@ android {
         applicationId 'com.nlsn.tvcompanion'
         minSdk 23
         targetSdk 35
-        versionCode 7
-        versionName '1.3.3-install-assistant'
+        versionCode 8
+        versionName '1.4-exact-tv-listing'
     }
 
     signingConfigs {
