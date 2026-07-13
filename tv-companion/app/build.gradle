@@ -10,13 +10,23 @@ android {
         applicationId 'com.nlsn.tvcompanion'
         minSdk 23
         targetSdk 35
-        versionCode 5
-        versionName '1.3.1-install-assistant'
+        versionCode 6
+        versionName '1.3.2-install-assistant'
+    }
+
+    signingConfigs {
+        testDebug {
+            storeFile file('../.signing/debug.keystore')
+            storePassword 'android'
+            keyAlias 'tvcompanion'
+            keyPassword 'android'
+        }
     }
 
     buildTypes {
         debug {
             debuggable true
+            signingConfig signingConfigs.testDebug
         }
         release {
             minifyEnabled false
