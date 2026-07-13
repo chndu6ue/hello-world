@@ -10,8 +10,8 @@ android {
         applicationId 'com.nlsn.tvcompanion'
         minSdk 23
         targetSdk 35
-        versionCode 3
-        versionName '1.2-dial-launch'
+        versionCode 4
+        versionName '1.3-install-assistant'
     }
 
     buildTypes {
