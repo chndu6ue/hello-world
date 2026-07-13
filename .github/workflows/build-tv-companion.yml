@@ -29,10 +29,27 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Build debug APK
+        id: build
         working-directory: tv-companion
-        run: gradle --no-daemon clean assembleDebug
+        shell: bash
+        run: |
+          set +e
+          gradle --no-daemon clean assembleDebug 2>&1 | tee build.log
+          code=${PIPESTATUS[0]}
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-companion-build-log
+          path: tv-companion/build.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: tv-companion-debug-apk
