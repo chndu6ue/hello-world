@@ -46,10 +46,6 @@ jobs:
               -dname "CN=TV Companion Test, O=Nielsen Test, C=IN"
           fi
 
-      - name: Configure exact ConfluenceTV listing
-        working-directory: tv-companion
-        run: python3 prepare_exact_listing.py
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
