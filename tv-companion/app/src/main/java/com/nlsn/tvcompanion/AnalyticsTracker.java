@@ -17,321 +17,194 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.TimeZone;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/**
- * Persistent, best-effort analytics delivery for the install assistant.
- *
- * <p>The plaintext mobile number is held only long enough to start the server
- * session. It is never written to SharedPreferences or Android logs. Events are
- * assigned UUIDs and persisted before delivery, so server retries are
- * idempotent.</p>
- */
+/** Persistent best-effort behavioural event delivery. */
 final class AnalyticsTracker {
-
     private static final String TAG = "AssistantAnalytics";
     private static final String PREFS = "assistant_analytics";
     private static final String KEY_INSTALLATION_ID = "installation_id";
-    private static final String KEY_SEQUENCE = "sequence";
+    private static final String KEY_USER_ID = "user_id";
     private static final String KEY_QUEUE = "event_queue";
-    private static final String KEY_MOBILE_FINGERPRINT = "mobile_fingerprint";
-    private static final int MAX_QUEUED_EVENTS = 200;
+    private static final int MAX_QUEUED_EVENTS = 250;
 
-    static final String EXTRA_MOBILE_NUMBER = "mobile_number";
-    static final String EXTRA_REGISTRATION_ID = "registration_id";
-    static final String EXTRA_TRANSID = "transid";
+    static final String EXTRA_USER_ID = "userid";
 
     private final Context context;
     private final SharedPreferences preferences;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Object queueLock = new Object();
-    private final String apiBaseUrl;
+    private final String endpoint;
     private final String installationId;
+    private final String sessionId = UUID.randomUUID().toString();
 
-    private volatile String currentSessionToken;
-    private volatile String currentMobileFingerprint;
+    private volatile String currentUserId;
     private volatile boolean enabled;
+    private boolean launchRecorded;
 
     AnalyticsTracker(Context context) {
         this.context = context.getApplicationContext();
         this.preferences = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        this.apiBaseUrl = normalizeBaseUrl(BuildConfig.TRACKING_API_BASE_URL);
-        this.enabled = !this.apiBaseUrl.isEmpty();
+        this.endpoint = normalizeEndpoint(BuildConfig.TRACKING_API_BASE_URL);
+        this.enabled = !endpoint.isEmpty();
         this.installationId = getOrCreateInstallationId();
+        this.currentUserId = preferences.getString(KEY_USER_ID, null);
     }
 
     void beginSession(Intent launchIntent, String language) {
         if (!enabled) {
-            Log.i(TAG, "Tracking is disabled because TRACKING_API_BASE_URL is not configured.");
+            Log.i(TAG, "Tracking disabled: TRACKING_API_BASE_URL is not configured.");
             return;
         }
-
-        LaunchIdentity identity = LaunchIdentity.fromIntent(launchIntent);
-        if (identity.mobileNumber == null || identity.mobileNumber.trim().isEmpty()) {
-            Log.w(TAG, "Tracking session not started: mobile_number was not supplied.");
+        String supplied = userIdFromIntent(launchIntent);
+        if (supplied != null) {
+            currentUserId = supplied;
+            preferences.edit().putString(KEY_USER_ID, supplied).apply();
+        }
+        if (currentUserId == null || currentUserId.isEmpty()) {
+            Log.w(TAG, "Tracking not started: launch the assistant with ?userid=...");
             return;
         }
-
-        currentMobileFingerprint = sha256(identity.mobileNumber.trim());
-        discardUnboundEventsForOtherUser(currentMobileFingerprint);
-
-        Map<String, Object> launchProperties = new HashMap<>();
-        launchProperties.put("launch_source", identity.launchSource);
-        enqueueEvent("app_launched", launchProperties, null, currentMobileFingerprint);
-
-        executor.execute(() -> startSessionWithRetry(identity, language));
+        if (!launchRecorded) {
+            launchRecorded = true;
+            JSONObject value = new JSONObject();
+            put(value, "launch_source", launchIntent != null && launchIntent.getData() != null
+                    ? "web_deep_link" : "launcher_or_intent");
+            put(value, "device_manufacturer", Build.MANUFACTURER);
+            put(value, "device_model", Build.MODEL);
+            enqueue("app_launched", value, language);
+        }
+        flush();
     }
 
     void trackLanguageSelected(String language) {
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("language", language);
-        track("language_selected", properties);
+        JSONObject value = new JSONObject();
+        put(value, "language", language);
+        track("language_selected", value, language);
     }
 
-    void trackTvScanCompleted(int tvCount, List<String> tvSources, long scanDurationMs) {
-        Map<String, Object> properties = new HashMap<>();
-        properties.put("tv_count", Math.max(0, tvCount));
-        properties.put("tv_sources", tvSources == null ? new ArrayList<>() : tvSources);
-        properties.put("scan_duration_ms", Math.max(0L, scanDurationMs));
-        track("tv_scan_completed", properties);
+    void trackTvScanCompleted(int tvCount, List<String> tvNames, List<String> tvSources,
+                              long scanDurationMs, String language) {
+        JSONObject value = new JSONObject();
+        put(value, "tv_count", Math.max(0, tvCount));
+        put(value, "tv_names", new JSONArray(tvNames == null ? new ArrayList<>() : tvNames));
+        put(value, "tv_sources", new JSONArray(tvSources == null ? new ArrayList<>() : tvSources));
+        put(value, "scan_duration_ms", Math.max(0L, scanDurationMs));
+        track("tv_scan_completed", value, language);
     }
 
-    void trackInstallationClicked(String selectedTvSource, int tvCount) {
-        Map<String, Object> properties = new HashMap<>();
-        if (selectedTvSource != null) {
-            properties.put("selected_tv_source", selectedTvSource);
-        }
-        properties.put("tv_count", Math.max(0, tvCount));
-        properties.put("play_store_package", "com.nlsn.confluencetv");
-        track("installation_clicked", properties);
+    void trackInstallationButtonClicked(String selectedTvName, String selectedTvSource,
+                                        int tvCount, String language) {
+        JSONObject value = new JSONObject();
+        put(value, "selected_tv_name", selectedTvName);
+        put(value, "selected_tv_source", selectedTvSource);
+        put(value, "tv_count", Math.max(0, tvCount));
+        put(value, "play_store_package", "com.nlsn.confluencetv");
+        track("installation_button_clicked", value, language);
     }
 
-    void trackPostInstallClicked(String selectedTvSource, long elapsedMs) {
-        Map<String, Object> properties = new HashMap<>();
-        if (selectedTvSource != null) {
-            properties.put("selected_tv_source", selectedTvSource);
+    void trackAfterInstallButtonClicked(String selectedTvName, String selectedTvSource,
+                                        long elapsedSinceInstallMs, String language) {
+        JSONObject value = new JSONObject();
+        put(value, "selected_tv_name", selectedTvName);
+        put(value, "selected_tv_source", selectedTvSource);
+        if (elapsedSinceInstallMs >= 0) {
+            put(value, "elapsed_since_install_click_ms", elapsedSinceInstallMs);
         }
-        if (elapsedMs >= 0) {
-            properties.put("elapsed_since_install_click_ms", elapsedMs);
-        }
-        track("post_install_clicked", properties);
+        track("after_install_button_clicked", value, language);
     }
 
     void flush() {
-        if (enabled) {
+        if (enabled && currentUserId != null) {
             executor.execute(this::flushQueue);
         }
     }
 
-    private void track(String eventType, Map<String, Object> properties) {
-        if (!enabled || currentMobileFingerprint == null) {
+    private void track(String action, JSONObject value, String language) {
+        if (!enabled || currentUserId == null || currentUserId.isEmpty()) {
             return;
         }
-        enqueueEvent(eventType, properties, currentSessionToken, currentMobileFingerprint);
+        enqueue(action, value, language);
         flush();
     }
 
-    private void startSessionWithRetry(LaunchIdentity identity, String language) {
-        long[] delaysMs = {0L, 2000L, 7000L};
-        for (int attempt = 0; attempt < delaysMs.length; attempt++) {
-            if (delaysMs[attempt] > 0) {
-                try {
-                    Thread.sleep(delaysMs[attempt]);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    return;
-                }
-            }
-
-            try {
-                String token = startSession(identity, language);
-                if (token != null && !token.isEmpty()) {
-                    currentSessionToken = token;
-                    bindUnboundEvents(currentMobileFingerprint, token);
-                    flushQueue();
-                    return;
-                }
-            } catch (Exception error) {
-                Log.w(TAG, "Session start attempt failed: " + error.getClass().getSimpleName());
-            }
-        }
-    }
-
-    private String startSession(LaunchIdentity identity, String language) throws Exception {
-        JSONObject device = new JSONObject()
-                .put("manufacturer", Build.MANUFACTURER)
-                .put("model", Build.MODEL)
-                .put("android_sdk", Build.VERSION.SDK_INT);
-
-        JSONObject payload = new JSONObject()
-                .put("mobile_number", identity.mobileNumber)
-                .put("installation_id", installationId)
-                .put("app_id", context.getPackageName())
-                .put("app_version", appVersion())
-                .put("language", language)
-                .put("launch_source", identity.launchSource)
-                .put("device", device);
-
-        if (identity.registrationId != null && !identity.registrationId.isEmpty()) {
-            payload.put("registration_id", identity.registrationId);
-        }
-        if (identity.transid != null && !identity.transid.isEmpty()) {
-            payload.put("transid", identity.transid);
-        }
-
-        HttpResult result = postJson("/v1/sessions/start", payload, null);
-        if (result.statusCode < 200 || result.statusCode >= 300) {
-            throw new IllegalStateException("Session start HTTP " + result.statusCode);
-        }
-        return new JSONObject(result.body).optString("session_token", "");
-    }
-
-    private void enqueueEvent(
-            String eventType,
-            Map<String, Object> properties,
-            String token,
-            String fingerprint) {
+    private void enqueue(String action, JSONObject value, String language) {
         try {
             JSONObject event = new JSONObject()
+                    .put("user_id", currentUserId)
+                    .put("action", action)
+                    .put("value", value == null ? new JSONObject() : value)
                     .put("event_id", UUID.randomUUID().toString())
-                    .put("event_type", eventType)
-                    .put("client_timestamp", utcNow())
-                    .put("sequence_number", nextSequence())
-                    .put("properties", new JSONObject(properties));
-
-            JSONObject envelope = new JSONObject()
-                    .put("token", token == null ? "" : token)
-                    .put("fingerprint", fingerprint == null ? "" : fingerprint)
-                    .put("event", event);
-
+                    .put("session_id", sessionId)
+                    .put("installation_id", installationId)
+                    .put("app_version", appVersion())
+                    .put("language", language == null ? "en" : language)
+                    .put("client_at", utcNow());
             synchronized (queueLock) {
                 JSONArray queue = readQueueLocked();
                 while (queue.length() >= MAX_QUEUED_EVENTS) {
                     queue = withoutIndex(queue, 0);
                 }
-                queue.put(envelope);
+                queue.put(event);
                 writeQueueLocked(queue);
             }
         } catch (Exception error) {
-            Log.w(TAG, "Could not persist analytics event: " + error.getClass().getSimpleName());
-        }
-    }
-
-    private void bindUnboundEvents(String fingerprint, String token) {
-        synchronized (queueLock) {
-            JSONArray queue = readQueueLocked();
-            for (int i = 0; i < queue.length(); i++) {
-                JSONObject envelope = queue.optJSONObject(i);
-                if (envelope == null) {
-                    continue;
-                }
-                if (envelope.optString("token").isEmpty()
-                        && fingerprint.equals(envelope.optString("fingerprint"))) {
-                    try {
-                        envelope.put("token", token);
-                    } catch (Exception ignored) {
-                        // JSONObject put cannot fail for String values.
-                    }
-                }
-            }
-            writeQueueLocked(queue);
-        }
-    }
-
-    private void discardUnboundEventsForOtherUser(String fingerprint) {
-        synchronized (queueLock) {
-            JSONArray queue = readQueueLocked();
-            JSONArray retained = new JSONArray();
-            for (int i = 0; i < queue.length(); i++) {
-                JSONObject envelope = queue.optJSONObject(i);
-                if (envelope == null) {
-                    continue;
-                }
-                String token = envelope.optString("token");
-                String queuedFingerprint = envelope.optString("fingerprint");
-                if (!token.isEmpty() || fingerprint.equals(queuedFingerprint)) {
-                    retained.put(envelope);
-                }
-            }
-            writeQueueLocked(retained);
-            preferences.edit().putString(KEY_MOBILE_FINGERPRINT, fingerprint).apply();
+            Log.w(TAG, "Could not persist tracking event: " + error.getClass().getSimpleName());
         }
     }
 
     private void flushQueue() {
         while (enabled) {
-            JSONObject envelope;
+            JSONObject event;
             synchronized (queueLock) {
-                envelope = firstDeliverableEnvelope(readQueueLocked());
+                event = readQueueLocked().optJSONObject(0);
             }
-            if (envelope == null) {
+            if (event == null) {
                 return;
             }
-
-            String token = envelope.optString("token");
-            JSONObject event = envelope.optJSONObject("event");
-            if (token.isEmpty() || event == null) {
-                return;
-            }
-
             String eventId = event.optString("event_id");
             try {
-                HttpResult result = postJson("/v1/events", event, token);
+                HttpResult result = postJson(event);
                 if ((result.statusCode >= 200 && result.statusCode < 300)
-                        || (result.statusCode >= 400
-                        && result.statusCode < 500
-                        && result.statusCode != 408
-                        && result.statusCode != 429)) {
+                        || (result.statusCode >= 400 && result.statusCode < 500
+                        && result.statusCode != 408 && result.statusCode != 429)) {
                     removeEvent(eventId);
                     continue;
                 }
                 return;
             } catch (Exception error) {
-                Log.w(TAG, "Event delivery paused: " + error.getClass().getSimpleName());
+                Log.w(TAG, "Tracking delivery paused: " + error.getClass().getSimpleName());
                 return;
             }
         }
     }
 
-    private HttpResult postJson(String path, JSONObject payload, String bearerToken)
-            throws Exception {
+    private HttpResult postJson(JSONObject payload) throws Exception {
         HttpURLConnection connection = null;
         try {
-            URL url = new URL(apiBaseUrl + path);
-            connection = (HttpURLConnection) url.openConnection();
+            connection = (HttpURLConnection) new URL(endpoint + "/events").openConnection();
             connection.setRequestMethod("POST");
             connection.setConnectTimeout(10000);
             connection.setReadTimeout(10000);
             connection.setDoOutput(true);
             connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
             connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("X-Client-App", context.getPackageName());
-            if (bearerToken != null && !bearerToken.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + bearerToken);
-            }
-
             byte[] body = payload.toString().getBytes(StandardCharsets.UTF_8);
             connection.setFixedLengthStreamingMode(body.length);
             try (OutputStream output = connection.getOutputStream()) {
                 output.write(body);
             }
-
             int statusCode = connection.getResponseCode();
             InputStream input = statusCode >= 200 && statusCode < 400
-                    ? connection.getInputStream()
-                    : connection.getErrorStream();
+                    ? connection.getInputStream() : connection.getErrorStream();
             return new HttpResult(statusCode, readBody(input));
         } finally {
             if (connection != null) {
@@ -345,26 +218,13 @@ final class AnalyticsTracker {
             JSONArray queue = readQueueLocked();
             JSONArray retained = new JSONArray();
             for (int i = 0; i < queue.length(); i++) {
-                JSONObject envelope = queue.optJSONObject(i);
-                JSONObject event = envelope == null ? null : envelope.optJSONObject("event");
+                JSONObject event = queue.optJSONObject(i);
                 if (event == null || !eventId.equals(event.optString("event_id"))) {
-                    if (envelope != null) {
-                        retained.put(envelope);
-                    }
+                    if (event != null) retained.put(event);
                 }
             }
             writeQueueLocked(retained);
         }
-    }
-
-    private JSONObject firstDeliverableEnvelope(JSONArray queue) {
-        for (int i = 0; i < queue.length(); i++) {
-            JSONObject envelope = queue.optJSONObject(i);
-            if (envelope != null && !envelope.optString("token").isEmpty()) {
-                return envelope;
-            }
-        }
-        return null;
     }
 
     private JSONArray readQueueLocked() {
@@ -379,19 +239,9 @@ final class AnalyticsTracker {
         preferences.edit().putString(KEY_QUEUE, queue.toString()).apply();
     }
 
-    private int nextSequence() {
-        synchronized (queueLock) {
-            int next = preferences.getInt(KEY_SEQUENCE, 0) + 1;
-            preferences.edit().putInt(KEY_SEQUENCE, next).apply();
-            return next;
-        }
-    }
-
     private String getOrCreateInstallationId() {
         String existing = preferences.getString(KEY_INSTALLATION_ID, null);
-        if (existing != null && !existing.isEmpty()) {
-            return existing;
-        }
+        if (existing != null && !existing.isEmpty()) return existing;
         String created = UUID.randomUUID().toString();
         preferences.edit().putString(KEY_INSTALLATION_ID, created).apply();
         return created;
@@ -399,53 +249,45 @@ final class AnalyticsTracker {
 
     private String appVersion() {
         try {
-            return context.getPackageManager()
-                    .getPackageInfo(context.getPackageName(), 0)
-                    .versionName;
+            return context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
         } catch (Exception ignored) {
             return "unknown";
         }
     }
 
-    private static JSONArray withoutIndex(JSONArray source, int skippedIndex) {
-        JSONArray result = new JSONArray();
-        for (int i = 0; i < source.length(); i++) {
-            if (i != skippedIndex) {
-                Object value = source.opt(i);
-                if (value != null) {
-                    result.put(value);
-                }
-            }
-        }
-        return result;
+    private static String userIdFromIntent(Intent intent) {
+        if (intent == null) return null;
+        String value = firstNonBlank(
+                intent.getStringExtra(EXTRA_USER_ID),
+                intent.getStringExtra("user_id"),
+                query(intent.getData(), "userid"),
+                query(intent.getData(), "user_id"));
+        if (value == null) return null;
+        value = value.trim();
+        return value.length() > 160 ? value.substring(0, 160) : value;
     }
 
-    private static String normalizeBaseUrl(String raw) {
-        if (raw == null) {
-            return "";
-        }
-        String value = raw.trim();
-        while (value.endsWith("/")) {
-            value = value.substring(0, value.length() - 1);
-        }
-        if (!value.startsWith("https://")) {
-            return "";
-        }
-        return value;
-    }
-
-    private static String sha256(String value) {
+    private static String query(Uri uri, String key) {
+        if (uri == null || !uri.isHierarchical()) return null;
         try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hashed = digest.digest(value.getBytes(StandardCharsets.UTF_8));
-            StringBuilder result = new StringBuilder();
-            for (byte item : hashed) {
-                result.append(String.format(Locale.US, "%02x", item));
-            }
-            return result.toString();
-        } catch (Exception error) {
-            return Integer.toHexString(value.hashCode());
+            return uri.getQueryParameter(key);
+        } catch (Exception ignored) {
+            return null;
         }
+    }
+
+    private static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.trim().isEmpty()) return value;
+        }
+        return null;
+    }
+
+    private static String normalizeEndpoint(String raw) {
+        if (raw == null) return "";
+        String value = raw.trim();
+        while (value.endsWith("/")) value = value.substring(0, value.length() - 1);
+        return value.startsWith("https://") ? value : "";
     }
 
     private static String utcNow() {
@@ -454,86 +296,40 @@ final class AnalyticsTracker {
         return format.format(new Date());
     }
 
-    private static String readBody(InputStream input) throws Exception {
-        if (input == null) {
-            return "";
+    private static void put(JSONObject target, String key, Object value) {
+        if (value == null) return;
+        try {
+            target.put(key, value);
+        } catch (Exception ignored) {
+            // Analytics must never interrupt the install flow.
         }
+    }
+
+    private static JSONArray withoutIndex(JSONArray source, int skippedIndex) {
+        JSONArray result = new JSONArray();
+        for (int i = 0; i < source.length(); i++) {
+            if (i != skippedIndex && source.opt(i) != null) result.put(source.opt(i));
+        }
+        return result;
+    }
+
+    private static String readBody(InputStream input) throws Exception {
+        if (input == null) return "";
         StringBuilder body = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(
                 new InputStreamReader(input, StandardCharsets.UTF_8))) {
             String line;
-            while ((line = reader.readLine()) != null && body.length() < 65536) {
-                body.append(line);
-            }
+            while ((line = reader.readLine()) != null && body.length() < 65536) body.append(line);
         }
         return body.toString();
     }
 
     private static final class HttpResult {
         private final int statusCode;
-        private final String body;
-
+        @SuppressWarnings("unused") private final String body;
         private HttpResult(int statusCode, String body) {
             this.statusCode = statusCode;
             this.body = body;
-        }
-    }
-
-    private static final class LaunchIdentity {
-        private final String mobileNumber;
-        private final String registrationId;
-        private final String transid;
-        private final String launchSource;
-
-        private LaunchIdentity(
-                String mobileNumber,
-                String registrationId,
-                String transid,
-                String launchSource) {
-            this.mobileNumber = mobileNumber;
-            this.registrationId = registrationId;
-            this.transid = transid;
-            this.launchSource = launchSource;
-        }
-
-        private static LaunchIdentity fromIntent(Intent intent) {
-            if (intent == null) {
-                return new LaunchIdentity(null, null, null, "unknown");
-            }
-
-            String mobile = firstNonBlank(
-                    intent.getStringExtra(EXTRA_MOBILE_NUMBER),
-                    intent.getStringExtra("mobile"),
-                    queryParameter(intent.getData(), "mobile_number"),
-                    queryParameter(intent.getData(), "mobile"));
-            String registrationId = firstNonBlank(
-                    intent.getStringExtra(EXTRA_REGISTRATION_ID),
-                    queryParameter(intent.getData(), EXTRA_REGISTRATION_ID));
-            String transid = firstNonBlank(
-                    intent.getStringExtra(EXTRA_TRANSID),
-                    queryParameter(intent.getData(), EXTRA_TRANSID));
-            String launchSource = intent.getData() != null ? "deep_link" : "intent_extra";
-            return new LaunchIdentity(mobile, registrationId, transid, launchSource);
-        }
-
-        private static String queryParameter(Uri uri, String key) {
-            if (uri == null || !uri.isHierarchical()) {
-                return null;
-            }
-            try {
-                return uri.getQueryParameter(key);
-            } catch (Exception ignored) {
-                return null;
-            }
-        }
-
-        private static String firstNonBlank(String... values) {
-            for (String value : values) {
-                if (value != null && !value.trim().isEmpty()) {
-                    return value.trim();
-                }
-            }
-            return null;
         }
     }
 }
