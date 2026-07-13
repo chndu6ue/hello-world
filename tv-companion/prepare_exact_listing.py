@@ -24,10 +24,6 @@ replacements = {
         '        guideCard.addView(step("3", "Choose your TV and confirm installation."));',
     'installButton.setText("Find ConfluenceTV in Google Play");':
         'installButton.setText("Open ConfluenceTV in Google Play");',
-    'installButton.setText("Find ConfluenceTV in Google Play");\n'
-    '        } else {':
-        'installButton.setText("Open ConfluenceTV in Google Play");\n'
-        '        } else {',
     'String message = "Google Play will open with “ConfluenceTV” already searched.\\n\\n"\n'
     '                + "1. Tap the Android TV filter.\\n"\n'
     '                + "2. Open ConfluenceTV by Nielsen Streaming Panel.\\n"\n'
@@ -51,29 +47,29 @@ method_pattern = re.compile(
     re.DOTALL | re.MULTILINE,
 )
 
-method_replacement = f'''    private void openPlayStoreListing() {{
+method_replacement = '''    private void openPlayStoreListing() {
         Uri marketUri = Uri.parse("market://details?id=" + TV_APP_PACKAGE);
         Intent playIntent = new Intent(Intent.ACTION_VIEW, marketUri);
         playIntent.setPackage("com.android.vending");
         playIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
 
-        try {{
+        try {
             startActivity(playIntent);
             playStoreOpened = true;
-        }} catch (Exception playStoreError) {{
+        } catch (Exception playStoreError) {
             Uri webUri = Uri.parse(
                     "https://play.google.com/store/apps/details?id=" + TV_APP_PACKAGE);
-            try {{
+            try {
                 startActivity(new Intent(Intent.ACTION_VIEW, webUri));
                 playStoreOpened = true;
-            }} catch (Exception browserError) {{
+            } catch (Exception browserError) {
                 Toast.makeText(
                         this,
                         "Google Play or a web browser could not be opened.",
                         Toast.LENGTH_LONG).show();
-            }}
-        }}
-    }}
+            }
+        }
+    }
 
     private void showAfterInstallDialog'''
 
